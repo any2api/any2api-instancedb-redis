@@ -106,7 +106,7 @@ module.exports = function(spec) {
             transaction.get(key);
           });
 
-          //TODO: filter by status here already!
+          //TODO: filter by status here already (efficiency)
 
           transaction.exec(function(err, values) {
             if (err) {
@@ -207,7 +207,7 @@ module.exports = function(spec) {
     getAll = function(prefix, callback) {
       var re = new RegExp('^' + prefix);
 
-      //TODO: filter by status here already!
+      //TODO: filter by status here already (efficiency)
       nedb.find({ _id: re }, function(err, values) {
         if (err) return callback(err);
 
