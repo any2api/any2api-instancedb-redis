@@ -330,6 +330,8 @@ module.exports = function(spec) {
           });
         },
         function(callback) {
+          if (!instance) return callback();
+
           parameters.list(args, function(err, list) {
             instance.parameters_list = list || [];
 
@@ -337,6 +339,8 @@ module.exports = function(spec) {
           });
         },
         function(callback) {
+          if (!instance) return callback();
+
           results.list(args, function(err, list) {
             instance.results_list = list || [];
 
@@ -344,7 +348,7 @@ module.exports = function(spec) {
           });
         },
         function(callback) {
-          if (!args.embedParameters) return callback();
+          if (!instance || !args.embedParameters) return callback();
 
           if (args.embedParameters !== 'all' && _.isArray(args.embedParameters)) {
             args.filter = args.embedParameters;
@@ -359,7 +363,7 @@ module.exports = function(spec) {
           });
         },
         function(callback) {
-          if (!args.embedResults) return callback();
+          if (!instance || !args.embedResults) return callback();
 
           if (args.embedResults !== 'all' && _.isArray(args.embedResults)) {
             args.filter = args.embedResults;
