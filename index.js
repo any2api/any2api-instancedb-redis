@@ -196,9 +196,11 @@ module.exports = function(spec) {
       nedb.findOne({ _id: key }, function(err, value) {
         if (err) return callback(err);
 
-        if (value) delete value._id;
+        if (value) {
+          delete value._id;
 
-        value = unwrap(value);
+          value = unwrap(value);
+        }
 
         callback(null, value);
       });
