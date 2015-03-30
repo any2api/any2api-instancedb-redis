@@ -13,7 +13,7 @@ module.exports = function(spec) {
   spec.scope = spec.scope || 'default';
   spec.forceRedis = spec.forceRedis || false;
 
-  var set, remove, removeAll, get, getAll;
+  var set, remove, removeAll, list, get, getAll;
 
   if (spec.redisConfig || spec.forceRedis) {
     spec.redisConfig = spec.redisConfig || {};
@@ -65,6 +65,32 @@ module.exports = function(spec) {
 
             clientPool.release(spec.redisConfig, client);
           });
+        });
+      });
+    };
+
+    list = function(prefix, callback) {
+      clientPool.acquire(spec.redisConfig, function(err, client) {
+        if (err) return callback(err);
+
+        client.keys(prefix, function(err, keys) {
+          if (err) {
+            callback(err);
+
+            clientPool.release(spec.redisConfig, client);
+
+            return;
+          }
+
+          var list = [];
+
+          _.each(keys, function(key) {
+            list.push(key.split(':').pop());
+          });
+
+          callback(null, list);
+
+          clientPool.release(spec.redisConfig, client);
         });
       });
     };
@@ -192,6 +218,22 @@ module.exports = function(spec) {
       nedb.remove({ _id: re }, { multi: true }, callback);
     };
 
+    list = function(prefix, callback) {
+      var re = new RegExp('^' + prefix);
+
+      nedb.find({ _id: re }, function(err, values) {
+        if (err) return callback(err);
+
+        var list = [];
+
+        _.each(values, function(value) {
+          list.push(value._id.split(':').pop());
+        });
+
+        callback(null, list);
+      });
+    };
+
     get = function(key, callback) {
       nedb.findOne({ _id: key }, function(err, value) {
         if (err) return callback(err);
@@ -240,7 +282,7 @@ module.exports = function(spec) {
       var res = args.instance.results;
       delete args.instance.results;
 
-      async.waterfall([
+      async.series([
         function(callback) {
           set(getInstancePrefix(args) + args.id, args.instance, callback);
         },
@@ -277,7 +319,63 @@ module.exports = function(spec) {
     get: function(args, callback) {
       if (validateInstanceArgs(args, callback) !== null) return;
 
-      get(getInstancePrefix(args) + args.id, callback);
+      var instance;
+
+      async.series([
+        function(callback) {
+          get(getInstancePrefix(args) + args.id, function(err, inst) {
+            instance = inst;
+
+            callback(err);
+          });
+        },
+        function(callback) {
+          parameters.list(args, function(err, list) {
+            instance.parameters_list = list || [];
+
+            callback(err);
+          });
+        },
+        function(callback) {
+          results.list(args, function(err, list) {
+            instance.results_list = list || [];
+
+            callback(err);
+          });
+        },
+        function(callback) {
+          if (!args.embedParameters) return callback();
+
+          if (args.embedParameters !== 'all' && _.isArray(args.embedParameters)) {
+            args.filter = args.embedParameters;
+          }
+
+          parameters.getAll(args, function(err, params) {
+            instance.parameters = params;
+
+            delete args.filter;
+
+            callback(err);
+          });
+        },
+        function(callback) {
+          if (!args.embedResults) return callback();
+
+          if (args.embedResults !== 'all' && _.isArray(args.embedResults)) {
+            args.filter = args.embedResults;
+          }
+
+          results.getAll(args, function(err, results) {
+            instance.results = results;
+
+            delete args.filter;
+
+            callback(err);
+          });
+        }
+      ], function(err) {
+        callback(err, instance);
+      });
     },
     getAll: function(args, callback) {
       args = args || {};
@@ -322,6 +420,11 @@ module.exports = function(spec) {
 
       set(getParameterPrefix(args) + args.name, args.value, callback);
     },
+    list: function(args, callback) {
+      if (validateParameterArgs(args, callback) !== null) return;
+
+      list(getParameterPrefix(args), callback);
+    },
     get: function(args, callback) {
       if (validateParameterArgs(args, callback) !== null) return;
 
@@ -333,7 +436,17 @@ module.exports = function(spec) {
 
       if (validateParameterArgs(args, callback) !== null) return;
 
-      getAll(getParameterPrefix(args), callback);
+      getAll(getParameterPrefix(args), function(err, params) {
+        if (err || !args.filter) return callback(err, params);
+
+        filtered = {};
+
+        _.each(filter, function(paramName) {
+          if (params[paramName]) filtered[paramName] = params[paramName];
+        });
+
+        callback(null, filtered);
+      });
     },
     remove: function(args, callback) {
       if (validateParameterArgs(args, callback) !== null) return;
@@ -350,6 +463,11 @@ module.exports = function(spec) {
 
       set(getResultPrefix(args) + args.name, args.value, callback);
     },
+    list: function(args, callback) {
+      if (validateResultArgs(args, callback) !== null) return;
+
+      list(getResultPrefix(args), callback);
+    },
     get: function(args, callback) {
       if (validateResultArgs(args, callback) !== null) return;
 
@@ -361,7 +479,17 @@ module.exports = function(spec) {
 
       if (validateResultArgs(args, callback) !== null) return;
 
-      getAll(getResultPrefix(args), callback);
+      getAll(getResultPrefix(args), function(err, res) {
+        if (err || !args.filter) return callback(err, res);
+
+        filtered = {};
+
+        _.each(filter, function(resName) {
+          if (res[resName]) filtered[resName] = res[resName];
+        });
+
+        callback(null, filtered);
+      });
     },
     remove: function(args, callback) {
       if (validateResultArgs(args, callback) !== null) return;
