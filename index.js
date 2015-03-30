@@ -425,6 +425,8 @@ module.exports = function(spec) {
       set(getParameterPrefix(args) + args.name, args.value, callback);
     },
     list: function(args, callback) {
+      args.name = '*';
+
       if (validateParameterArgs(args, callback) !== null) return;
 
       list(getParameterPrefix(args), callback);
@@ -435,7 +437,6 @@ module.exports = function(spec) {
       get(getParameterPrefix(args) + args.name, callback);
     },
     getAll: function(args, callback) {
-      args = args || {};
       args.name = '*';
 
       if (validateParameterArgs(args, callback) !== null) return;
@@ -468,6 +469,8 @@ module.exports = function(spec) {
       set(getResultPrefix(args) + args.name, args.value, callback);
     },
     list: function(args, callback) {
+      args.name = '*';
+
       if (validateResultArgs(args, callback) !== null) return;
 
       list(getResultPrefix(args), callback);
@@ -478,7 +481,6 @@ module.exports = function(spec) {
       get(getResultPrefix(args) + args.name, callback);
     },
     getAll: function(args, callback) {
-      args = args || {};
       args.name = '*';
 
       if (validateResultArgs(args, callback) !== null) return;
