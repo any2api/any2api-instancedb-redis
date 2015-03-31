@@ -1,8 +1,8 @@
 var debug = require('debug')(require('./package.json').name);
 var _ = require('lodash');
 var async = require('async');
-var NeDB = null;
-var RedisPool = null;
+var RedisBackend = require('./lib/Redis');
+var NeDBBackend = require('./lib/NeDB');
 
 
 
@@ -13,266 +13,37 @@ module.exports = function(spec) {
   spec.scope = spec.scope || 'default';
   spec.forceRedis = spec.forceRedis || false;
 
-  var set, remove, removeAll, list, get, getAll;
+  var apiSpec = spec.apiSpec || { executables: {}, invokers: {} };
+
+  var backend;
 
   if (spec.redisConfig || spec.forceRedis) {
-    spec.redisConfig = spec.redisConfig || {};
-
-    RedisPool = require('redis-poolify');
-    var clientPool = RedisPool();
-
-    set = function(key, value, callback) {
-      if (_.isPlainObject(value)) value = JSON.stringify(value);
-
-      clientPool.acquire(spec.redisConfig, function(err, client) {
-        if (err) return callback(err);
-
-        client.set(key, value, function(err) {
-          callback(err);
-
-          clientPool.release(spec.redisConfig, client);
-        });
-      });
-    };
-
-    remove = function(key, callback) {
-      clientPool.acquire(spec.redisConfig, function(err, client) {
-        if (err) return callback(err);
-
-        client.del(key, function(err) {
-          callback(err);
-          
-          clientPool.release(spec.redisConfig, client);
-        });
-      });
-    };
-
-    removeAll = function(prefix, callback) {
-      clientPool.acquire(spec.redisConfig, function(err, client) {
-        if (err) return callback(err);
-
-        client.keys(prefix + '*', function(err, keys) {
-          if (err || _.isEmpty(keys)) {
-            callback(err);
-
-            clientPool.release(spec.redisConfig, client);
-
-            return;
-          }
-
-          client.del(keys, function(err) {
-            callback(err);
-
-            clientPool.release(spec.redisConfig, client);
-          });
-        });
-      });
-    };
-
-    list = function(prefix, callback) {
-      clientPool.acquire(spec.redisConfig, function(err, client) {
-        if (err) return callback(err);
-
-        client.keys(prefix, function(err, keys) {
-          if (err) {
-            callback(err);
-
-            clientPool.release(spec.redisConfig, client);
-
-            return;
-          }
-
-          var list = [];
-
-          _.each(keys, function(key) {
-            list.push(key.split(':').pop());
-          });
-
-          callback(null, list);
-
-          clientPool.release(spec.redisConfig, client);
-        });
-      });
-    };
-
-    get = function(key, callback) {
-      clientPool.acquire(spec.redisConfig, function(err, client) {
-        if (err) return callback(err);
-
-        client.get(key, function(err, value) {
-          try {
-            var parsed = JSON.parse(value);
-
-            value = parsed;
-          } catch(err) {}
-
-          callback(err, value);
-
-          clientPool.release(spec.redisConfig, client);
-        });
-      });
-    };
-
-    getAll = function(prefix, callback) {
-      clientPool.acquire(spec.redisConfig, function(err, client) {
-        if (err) return callback(err);
-
-        client.keys(prefix + '*', function(err, keys) {
-          if (err) {
-            callback(err);
-
-            clientPool.release(spec.redisConfig, client);
-
-            return;
-          }
-
-          var transaction = client.multi();
-
-          _.each(keys, function(key) {
-            transaction.get(key);
-          });
-
-          //TODO: filter by status here already (efficiency)
-
-          transaction.exec(function(err, values) {
-            if (err) {
-              callback(err);
-
-              clientPool.release(spec.redisConfig, client);
-
-              return;
-            }
-
-            var mappedValues = {};
-
-            _.each(keys, function(key) {
-              var value = values.shift();
-
-              try {
-                var parsed = JSON.parse(value);
-
-                value = parsed;
-              } catch(err) {}
-
-              mappedValues[key.split(':').pop()] = value;
-            });
-            
-            callback(null, mappedValues);
-            
-            clientPool.release(spec.redisConfig, client);
-          });
-        });
-      });
-    };
+    backend = RedisBackend(spec.redisConfig);
   } else {
-    NeDB = NeDB || require('nedb');
-
-    spec.nedbConfig = spec.nedbConfig || {};
-    spec.nedbConfig.filename = spec.nedbConfig.filename || 'instances.db';
-    spec.nedbConfig.autocompactionInterval = spec.nedbConfig.autocompactionInterval || 5000;
-    if (!_.isBoolean(spec.nedbConfig.autoload)) spec.nedbConfig.autoload = true;
-
-    var nedb = new NeDB(spec.nedbConfig);
-    nedb.persistence.setAutocompactionInterval(spec.nedbConfig.autocompactionInterval);
-
-    var wrap = function(value) {
-      if (!_.isPlainObject(value)) return { _nedb_wrapped: value };
-      else return value;
-    };
-
-    var unwrap = function(value) {
-      return value._nedb_wrapped || value;
-    }
-
-    set = function(key, value, callback) {
-      value = wrap(value);
-
-      nedb.findOne({ _id: key }, function(err, existingValue) {
-        if (err) return callback(err);
-
-        value._id = key;
-
-        if (existingValue) {
-          nedb.update({ _id: key }, value, {}, function(err) {
-            delete value._id;
-
-            callback(err);
-          });
-        } else {
-          nedb.insert(value, function(err) {
-            delete value._id;
-
-            callback(err);
-          });
-        }
-      });
-    };
-
-    remove = function(key, callback) {
-      nedb.remove({ _id: key }, {}, callback);
-    };
-
-    removeAll = function(prefix, callback) {
-      var re = new RegExp('^' + prefix);
-
-      nedb.remove({ _id: re }, { multi: true }, callback);
-    };
-
-    list = function(prefix, callback) {
-      var re = new RegExp('^' + prefix);
-
-      nedb.find({ _id: re }, function(err, values) {
-        if (err) return callback(err);
-
-        var list = [];
-
-        _.each(values, function(value) {
-          list.push(value._id.split(':').pop());
-        });
-
-        callback(null, list);
-      });
-    };
-
-    get = function(key, callback) {
-      nedb.findOne({ _id: key }, function(err, value) {
-        if (err) return callback(err);
-
-        if (value) {
-          delete value._id;
-
-          value = unwrap(value);
-        }
-
-        callback(null, value);
-      });
-    };
-
-    getAll = function(prefix, callback) {
-      var re = new RegExp('^' + prefix);
-
-      //TODO: filter by status here already (efficiency)
-      nedb.find({ _id: re }, function(err, values) {
-        if (err) return callback(err);
-
-        var mappedValues = {};
-
-        _.each(values, function(value) {
-          mappedValues[value._id.split(':').pop()] = unwrap(value);
-
-          delete value._id;
-        });
-
-        callback(null, mappedValues);
-      });
-    };
+    backend = NeDBBackend(spec.nedbConfig);
   }
 
 
 
+  //
+  // args:
+  //   id (string)
+  //   instance (object)
+  //   parameterName (string)
+  //   resultName (string)
+  //   value (string)
+  //   executableName (string)
+  //   invokerName (string)
+  //   status (string)
+  //   embedParameters ('all' || array)
+  //   embedResults ('all' || array)
+  //   preferBase64 (boolean)
+  //
+
+  // Common DB access functions
   var instances = {
     set: function(args, callback) {
-      if (validateInstanceArgs(args, callback) !== null) return;
+      if (prepareInstanceArgs(args, callback) !== null) return;
 
       if (!args.instance) return callback(new Error('instance must be specified'));
 
@@ -284,7 +55,7 @@ module.exports = function(spec) {
 
       async.series([
         function(callback) {
-          set(getInstancePrefix(args) + args.id, args.instance, callback);
+          backend.set(getInstancePrefix(args) + args.id, args.instance, 'json_object', callback);
         },
         function(callback) {
           if (!params) return callback();
@@ -294,7 +65,7 @@ module.exports = function(spec) {
 
             if (!value) return callback();
             
-            args.name = name;
+            args.parameterName = name;
             args.value = value;
 
             parameters.set(args, callback);
@@ -308,7 +79,7 @@ module.exports = function(spec) {
 
             if (!value) return callback();
             
-            args.name = name;
+            args.resultName = name;
             args.value = value;
 
             results.set(args, callback);
@@ -317,13 +88,13 @@ module.exports = function(spec) {
       ], callback);
     },
     get: function(args, callback) {
-      if (validateInstanceArgs(args, callback) !== null) return;
+      if (prepareInstanceArgs(args, callback) !== null) return;
 
       var instance;
 
       async.series([
         function(callback) {
-          get(getInstancePrefix(args) + args.id, function(err, inst) {
+          backend.get(getInstancePrefix(args) + args.id, 'json_object', function(err, inst) {
             instance = inst;
 
             callback(err);
@@ -333,7 +104,7 @@ module.exports = function(spec) {
           if (!instance) return callback();
 
           parameters.list(args, function(err, list) {
-            instance.parameters_list = list || [];
+            instance.parameters_stored = list || [];
 
             callback(err);
           });
@@ -342,7 +113,7 @@ module.exports = function(spec) {
           if (!instance) return callback();
 
           results.list(args, function(err, list) {
-            instance.results_list = list || [];
+            instance.results_stored = list || [];
 
             callback(err);
           });
@@ -382,12 +153,11 @@ module.exports = function(spec) {
       });
     },
     getAll: function(args, callback) {
-      args = args || {};
       args.id = '*';
 
-      if (validateInstanceArgs(args, callback) !== null) return;
+      if (prepareInstanceArgs(args, callback) !== null) return;
 
-      getAll(getInstancePrefix(args), function(err, instances) {
+      backend.getAll(getInstancePrefix(args), 'json_object', function(err, instances) {
         if (err) return callback(err);
 
         if (args.status) {
@@ -402,15 +172,15 @@ module.exports = function(spec) {
       });
     },
     remove: function(args, callback) {
-      if (validateInstanceArgs(args, callback) !== null) return;
+      if (prepareInstanceArgs(args, callback) !== null) return;
 
-      removeAll(getParameterPrefix(args), function(err) {
+      backend.removeAll(getParameterPrefix(args), function(err) {
         if (err) return callback(err);
 
-        removeAll(getResultPrefix(args), function(err) {
+        backend.removeAll(getResultPrefix(args), function(err) {
           if (err) return callback(err);
 
-          remove(getInstancePrefix(args) + args.id, callback);
+          backend.remove(getInstancePrefix(args) + args.id, callback);
         });
       });
     }
@@ -418,30 +188,30 @@ module.exports = function(spec) {
 
   var parameters = {
     set: function(args, callback) {
-      if (validateParameterArgs(args, callback) !== null) return;
+      if (prepareParameterArgs(args, callback) !== null) return;
 
       if (!args.value) return callback(new Error('value must be specified'));
 
-      set(getParameterPrefix(args) + args.name, args.value, callback);
+      backend.set(getParameterPrefix(args) + args.parameterName, args.value, getType(args), callback);
     },
     list: function(args, callback) {
-      args.name = '*';
+      args.parameterName = '*';
 
-      if (validateParameterArgs(args, callback) !== null) return;
+      if (prepareParameterArgs(args, callback) !== null) return;
 
-      list(getParameterPrefix(args), callback);
+      backend.list(getParameterPrefix(args), callback);
     },
     get: function(args, callback) {
-      if (validateParameterArgs(args, callback) !== null) return;
+      if (prepareParameterArgs(args, callback) !== null) return;
 
-      get(getParameterPrefix(args) + args.name, callback);
+      backend.get(getParameterPrefix(args) + args.parameterName, getType(args), callback);
     },
     getAll: function(args, callback) {
-      args.name = '*';
+      args.parameterName = '*';
 
-      if (validateParameterArgs(args, callback) !== null) return;
+      if (prepareParameterArgs(args, callback) !== null) return;
 
-      getAll(getParameterPrefix(args), function(err, params) {
+      backend.getAll(getParameterPrefix(args), getType(args), function(err, params) {
         if (err || !args.filter) return callback(err, params);
 
         filtered = {};
@@ -454,38 +224,38 @@ module.exports = function(spec) {
       });
     },
     remove: function(args, callback) {
-      if (validateParameterArgs(args, callback) !== null) return;
+      if (prepareParameterArgs(args, callback) !== null) return;
 
-      remove(getParameterPrefix(args) + args.name, callback);
+      backend.remove(getParameterPrefix(args) + args.parameterName, callback);
     }
   };
 
   var results = {
     set: function(args, callback) {
-      if (validateResultArgs(args, callback) !== null) return;
+      if (prepareResultArgs(args, callback) !== null) return;
 
       if (!args.value) return callback(new Error('value must be specified'));
 
-      set(getResultPrefix(args) + args.name, args.value, callback);
+      backend.set(getResultPrefix(args) + args.resultName, args.value, getType(args), callback);
     },
     list: function(args, callback) {
-      args.name = '*';
+      args.resultName = '*';
 
-      if (validateResultArgs(args, callback) !== null) return;
+      if (prepareResultArgs(args, callback) !== null) return;
 
-      list(getResultPrefix(args), callback);
+      backend.list(getResultPrefix(args), callback);
     },
     get: function(args, callback) {
-      if (validateResultArgs(args, callback) !== null) return;
+      if (prepareResultArgs(args, callback) !== null) return;
 
-      get(getResultPrefix(args) + args.name, callback);
+      backend.get(getResultPrefix(args) + args.resultName, getType(args), callback);
     },
     getAll: function(args, callback) {
-      args.name = '*';
+      args.resultName = '*';
 
-      if (validateResultArgs(args, callback) !== null) return;
+      if (prepareResultArgs(args, callback) !== null) return;
 
-      getAll(getResultPrefix(args), function(err, res) {
+      backend.getAll(getResultPrefix(args), getType(args), function(err, res) {
         if (err || !args.filter) return callback(err, res);
 
         filtered = {};
@@ -498,16 +268,55 @@ module.exports = function(spec) {
       });
     },
     remove: function(args, callback) {
-      if (validateResultArgs(args, callback) !== null) return;
+      if (prepareResultArgs(args, callback) !== null) return;
 
-      remove(getResultPrefix(args) + args.name, callback);
+      backend.remove(getResultPrefix(args) + args.resultName, callback);
     }
   };
 
 
 
   // Helper funtions
-  var validateInstanceArgs = function(args, callback) {
+  var getType = function(args) {
+    var type = 'text_string';
+
+    var entity = apiSpec.executables[args.executableName] || apiSpec.invokers[args.invokerName];
+
+    if (entity) {
+      if (args.parameterName === '*') {
+        type = {};
+
+        _.each(entity.parameters_schema, function(param, name) {
+          type[name] = param.type || type;
+        });
+      } else if (args.resultName === '*') {
+        type = {};
+
+        _.each(entity.results_schema, function(result, name) {
+          type[name] = result.type || type;
+        });
+      } else if (entity.parameters_schema[args.parameterName]) {
+        type = entity.parameters_schema[args.parameterName].type || type;
+      } else if (entity.results_schema[args.resultName]) {
+        type = entity.results_schema[args.resultName].type || type;
+      }
+    }
+
+    if (type === 'string') {
+      type = 'text_string';
+    } else if (type === 'byte_string' && args.preferBase64) {
+      type = '__base64_string';
+    } else if (_.isPlainObject(type) && args.preferBase64) {
+      _.each(type, function(t, name) {
+        if (t === 'string') type[name] = 'text_string';
+        else if (t === 'byte_string') type[name] = '__base64_string';
+      });
+    }
+
+    return type;
+  };
+
+  var prepareInstanceArgs = function(args, callback) {
     var err = null;
 
     if (!args) {
@@ -518,12 +327,12 @@ module.exports = function(spec) {
       err = new Error('either executable name or invoker name must be specified');
     }
 
+    if (err && callback) callback(err);
+
     if (args.instance) {
       args.id = args.id || args.instance.id;
       args.instance.id = args.id;
     }
-
-    if (err && callback) callback(err);
 
     return err;
   };
@@ -541,13 +350,13 @@ module.exports = function(spec) {
     return spec.scope + ':instance:' + getCommonPrefixPart(args);
   };
 
-  var validateParameterArgs = function(args, callback) {
-    var err = validateInstanceArgs(args, callback);
+  var prepareParameterArgs = function(args, callback) {
+    var err = prepareInstanceArgs(args, callback);
 
     if (err !== null) {
       return err;
-    } else if (!args.name) {
-      err = new Error('parameter or result name must be specified');
+    } else if (!args.parameterName) {
+      err = new Error('parameter name must be specified');
     }
 
     if (err && callback) callback(err);
@@ -559,7 +368,19 @@ module.exports = function(spec) {
     return spec.scope + ':parameter:' + getCommonPrefixPart(args) + args.id + ':';
   };
 
-  var validateResultArgs = validateParameterArgs;
+  var prepareResultArgs = function(args, callback) {
+    var err = prepareInstanceArgs(args, callback);
+
+    if (err !== null) {
+      return err;
+    } else if (!args.resultName) {
+      err = new Error('result name must be specified');
+    }
+
+    if (err && callback) callback(err);
+
+    return err;
+  };
 
   var getResultPrefix = function(args) {
     return spec.scope + ':result:' + getCommonPrefixPart(args) + args.id + ':';

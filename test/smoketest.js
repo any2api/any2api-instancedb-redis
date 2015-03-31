@@ -124,7 +124,7 @@ describe('parameters database smoke test', function() {
         id: '101',
         instance: { created: '1970-01-01', status: 'running' },
         invokerName: 'testinv',
-        name: 'foo',
+        parameterName: 'foo',
         value: 'bar'
       };
 
@@ -178,7 +178,7 @@ describe('results database smoke test', function() {
         id: '201',
         instance: { created: '1970-01-01', status: 'running' },
         invokerName: 'testinv',
-        name: 'foo',
+        resultName: 'foo',
         value: 'bar'
       };
 
