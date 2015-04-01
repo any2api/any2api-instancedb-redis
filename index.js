@@ -47,15 +47,17 @@ module.exports = function(spec) {
 
       if (!args.instance) return callback(new Error('instance must be specified'));
 
-      var params = args.instance.parameters;
-      delete args.instance.parameters;
+      var instance = _.clone(args.instance);
 
-      var res = args.instance.results;
-      delete args.instance.results;
+      var params = instance.parameters;
+      delete instance.parameters;
+
+      var res = instance.results;
+      delete instance.results;
 
       async.series([
         function(callback) {
-          backend.set(getInstancePrefix(args) + args.id, args.instance, 'json_object', callback);
+          backend.set(getInstancePrefix(args) + args.id, instance, 'json_object', callback);
         },
         function(callback) {
           if (!params) return callback();
