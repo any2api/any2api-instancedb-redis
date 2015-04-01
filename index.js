@@ -216,7 +216,7 @@ module.exports = function(spec) {
 
         filtered = {};
 
-        _.each(filter, function(paramName) {
+        _.each(args.filter, function(paramName) {
           if (params[paramName]) filtered[paramName] = params[paramName];
         });
 
@@ -260,7 +260,7 @@ module.exports = function(spec) {
 
         filtered = {};
 
-        _.each(filter, function(resName) {
+        _.each(args.filter, function(resName) {
           if (res[resName]) filtered[resName] = res[resName];
         });
 
@@ -278,27 +278,28 @@ module.exports = function(spec) {
 
   // Helper funtions
   var getType = function(args) {
-    var type = 'text_string';
+    var defaultType = 'text_string';
+    var type = defaultType;
 
-    var entity = apiSpec.executables[args.executableName] || apiSpec.invokers[args.invokerName];
+    var item = apiSpec.executables[args.executableName] || apiSpec.invokers[args.invokerName];
 
-    if (entity) {
+    if (item) {
       if (args.parameterName === '*') {
         type = {};
 
-        _.each(entity.parameters_schema, function(param, name) {
-          type[name] = param.type || type;
+        _.each(item.parameters_schema, function(param, name) {
+          type[name] = param.type || defaultType;
         });
       } else if (args.resultName === '*') {
         type = {};
 
-        _.each(entity.results_schema, function(result, name) {
-          type[name] = result.type || type;
+        _.each(item.results_schema, function(result, name) {
+          type[name] = result.type || defaultType;
         });
-      } else if (entity.parameters_schema[args.parameterName]) {
-        type = entity.parameters_schema[args.parameterName].type || type;
-      } else if (entity.results_schema[args.resultName]) {
-        type = entity.results_schema[args.resultName].type || type;
+      } else if (item.parameters_schema[args.parameterName]) {
+        type = item.parameters_schema[args.parameterName].type || defaultType;
+      } else if (item.results_schema[args.resultName]) {
+        type = item.results_schema[args.resultName].type || defaultType;
       }
     }
 
@@ -353,6 +354,8 @@ module.exports = function(spec) {
   var prepareParameterArgs = function(args, callback) {
     var err = prepareInstanceArgs(args, callback);
 
+    delete args.resultName;
+
     if (err !== null) {
       return err;
     } else if (!args.parameterName) {
@@ -370,6 +373,8 @@ module.exports = function(spec) {
 
   var prepareResultArgs = function(args, callback) {
     var err = prepareInstanceArgs(args, callback);
+
+    delete args.parameterName;
 
     if (err !== null) {
       return err;
