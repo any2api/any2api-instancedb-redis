@@ -47,6 +47,7 @@ module.exports = function(spec) {
 
       if (!args.instance) return callback(new Error('instance must be specified'));
 
+      args = _.clone(args);
       var instance = _.clone(args.instance);
 
       var params = instance.parameters;
@@ -92,12 +93,14 @@ module.exports = function(spec) {
     get: function(args, callback) {
       if (prepareInstanceArgs(args, callback) !== null) return;
 
-      var instance;
+      delete args.filter;
+
+      var instance = null;
 
       async.series([
         function(callback) {
           backend.get(getInstancePrefix(args) + args.id, 'json_object', function(err, inst) {
-            instance = inst;
+            if (!_.isEmpty(inst)) instance = inst;
 
             callback(err);
           });
@@ -155,6 +158,7 @@ module.exports = function(spec) {
       });
     },
     getAll: function(args, callback) {
+      args = _.clone(args);
       args.id = '*';
 
       if (prepareInstanceArgs(args, callback) !== null) return;
@@ -194,9 +198,19 @@ module.exports = function(spec) {
 
       if (!args.value) return callback(new Error('value must be specified'));
 
-      backend.set(getParameterPrefix(args) + args.parameterName, args.value, getType(args), callback);
+      if (args.instanceExists)
+        return backend.set(getParameterPrefix(args) + args.parameterName, args.value, getType(args), callback);
+
+      instances.get(args, function(err, instance) {
+        if (err) return callback(err);
+
+        if (!instance) return callback(new Error('no instance found for id = ' + args.id));
+
+        backend.set(getParameterPrefix(args) + args.parameterName, args.value, getType(args), callback);
+      });
     },
     list: function(args, callback) {
+      args = _.clone(args);
       args.parameterName = '*';
 
       if (prepareParameterArgs(args, callback) !== null) return;
@@ -209,6 +223,7 @@ module.exports = function(spec) {
       backend.get(getParameterPrefix(args) + args.parameterName, getType(args), callback);
     },
     getAll: function(args, callback) {
+      args = _.clone(args);
       args.parameterName = '*';
 
       if (prepareParameterArgs(args, callback) !== null) return;
@@ -238,9 +253,19 @@ module.exports = function(spec) {
 
       if (!args.value) return callback(new Error('value must be specified'));
 
-      backend.set(getResultPrefix(args) + args.resultName, args.value, getType(args), callback);
+      if (args.instanceExists)
+        return backend.set(getResultPrefix(args) + args.resultName, args.value, getType(args), callback);
+
+      instances.get(args, function(err, instance) {
+        if (err) return callback(err);
+
+        if (!instance) return callback(new Error('no instance found for id = ' + args.id));
+
+        backend.set(getResultPrefix(args) + args.resultName, args.value, getType(args), callback);
+      });
     },
     list: function(args, callback) {
+      args = _.clone(args);
       args.resultName = '*';
 
       if (prepareResultArgs(args, callback) !== null) return;
@@ -253,6 +278,7 @@ module.exports = function(spec) {
       backend.get(getResultPrefix(args) + args.resultName, getType(args), callback);
     },
     getAll: function(args, callback) {
+      args = _.clone(args);
       args.resultName = '*';
 
       if (prepareResultArgs(args, callback) !== null) return;
