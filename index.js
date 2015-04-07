@@ -306,7 +306,7 @@ module.exports = function(spec) {
 
   // Helper funtions
   var getType = function(args) {
-    var defaultType = 'text_string';
+    var defaultType = 'string';
     var type = defaultType;
 
     var item = apiSpec.executables[args.executableName] || apiSpec.invokers[args.invokerName];
@@ -331,14 +331,12 @@ module.exports = function(spec) {
       }
     }
 
-    if (type === 'string') {
-      type = 'text_string';
-    } else if (type === 'byte_string' && args.preferBase64) {
+    if (type === 'binary' && args.preferBase64) {
       type = '__base64_string';
     } else if (_.isPlainObject(type) && args.preferBase64) {
       _.each(type, function(t, name) {
-        if (t === 'string') type[name] = 'text_string';
-        else if (t === 'byte_string') type[name] = '__base64_string';
+        if (t === 'string') type[name] = 'string';
+        else if (t === 'binary') type[name] = '__base64_string';
       });
     }
 

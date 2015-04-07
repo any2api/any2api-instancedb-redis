@@ -1,6 +1,6 @@
 {
   "name": "any2api-instancedb-redis",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "author": "Johannes Wettinger <mail@jojow.de>",
   "description": "Redis-based instance DB (with embedded NeDB as fallback) for any2api",
   "repository": {
