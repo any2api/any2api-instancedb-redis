@@ -1,6 +1,8 @@
 language: node_js
 node_js:
 - '4'
+services:
+- redis-server
 env:
   secure: I4gnGWP5EgyZ1G1wljjlsLcjxBGbLKq7JXQqqTe0i65ERnLmSu9NLv0hGxR31hW5SYui0xM3YE72sD72+1sSLCmCUfbZHfivc0euCw2T62kOFxiSPAXbHmC18FBQ88jctjHz9OLCmu0hL/Om7a/oaI0YKliU7xBMBkKmu4mEh/I=
 deploy:

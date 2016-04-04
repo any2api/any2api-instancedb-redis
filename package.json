@@ -33,6 +33,6 @@
     "chai": "~2.2.0"
   },
   "scripts": {
-    "test": "mocha"
+    "test": "mocha && export REDIS_HOST=localhost REDIS_PORT=6379 && mocha"
   }
 }
