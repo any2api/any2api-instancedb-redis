@@ -22,7 +22,7 @@
   ],
   "preferGlobal": false,
   "dependencies": {
-    "lodash": "~4.9.0",
+    "lodash": "~4.10.0",
     "debug": "~2.2.0",
     "async": "~1.5.2",
     "nedb": "~1.8.0",
